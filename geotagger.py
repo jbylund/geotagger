@@ -1,5 +1,6 @@
 #!/usr/bin/python
-import os, argparse, math, sys, subprocess
+import os, argparse, math, sys, subprocess, operator
+from pygeocoder import Geocoder
 
 class planet:
     def __init__(self,radius):
@@ -25,19 +26,19 @@ class phi_psi:
         self.phi = math.radians(float(phi))
         self.psi = math.radians(float(psi))
 
-    def longitude(self):
+    def latitude(self):
         return self.phi
 
-    def latitude(self):
+    def longitude(self):
         return self.psi
 
     def __repr__(self):
         return "(" + `round(math.degrees(self.phi),2)` + ", " + `round(math.degrees(self.psi),2)` + ")"
 
 def great_circle_distance(p1,p2):
-    dlong = p2.longitude() - p1.longitude()
-    dlat = p2.latitude() - p1.latitude()
-    a = (math.sin(dlat / 2.0))**2 + math.cos(p1.latitude()) * math.cos(p2.latitude()) * (math.sin(dlong / 2.0))**2
+    dlong = p2.latitude() - p1.latitude()
+    dlat = p2.longitude() - p1.longitude()
+    a = (math.sin(dlat / 2.0))**2 + math.cos(p1.longitude()) * math.cos(p2.longitude()) * (math.sin(dlong / 2.0))**2
     if(a < 1):
         c = 2 * math.asin(math.sqrt(a))
     else:
@@ -80,15 +81,29 @@ def geotag_file(ifile,location_database):
     file_phi_psi = get_lat_long_file(ifile)
     file_location = geotag(file_phi_psi,location_database)
     if(file_location != None):
-        subprocess.call(["exiftool","-v", ifile, "-City=\"" + file_location.city+"\"","-State=\"" + file_location.state + "\""],stderr=dev_null)
+        subprocess.call(["exiftool","-q", "-q", ifile, "-City=\"" + file_location.city+"\"","-State=\"" + file_location.state + "\""],stderr=dev_null)
+
+def google_geotag_file(ifile):
+    file_phi_psi = get_lat_long_file(ifile)
+    location = Geocoder.reverse_geocode(math.degrees(file_phi_psi.latitude()), math.degrees(file_phi_psi.longitude()))
+
+    location_attributes = ["street_address","route","intersection","political","country",
+            "administrative_area_level_1","administrative_area_level_2","administrative_area_level_3",
+            "colloquial_area","locality","sublocality","neighborhood","premise","subpremise",
+            "postal_code","natural_feature","airport","park","point_of_interest"]
+
+    for i in location_attributes:
+        this_attr = getattr(location[0], i)
+        if(this_attr != None):
+            print this_attr
 
 def get_lat_long_file(ifile):
     gps_array = subprocess.check_output(["exiftool", ifile, "-GPSPosition"],stderr=dev_null).rstrip().split(":")
     if(1 == len(gps_array)):
         return None
-    latitude = string_to_decimal(gps_array[1].split(",")[0])
-    longitude = string_to_decimal(gps_array[1].split(",")[1])
-    return phi_psi(latitude,longitude)
+    longitude = string_to_decimal(gps_array[1].split(",")[0])
+    latitude = string_to_decimal(gps_array[1].split(",")[1])
+    return phi_psi(longitude,latitude)
 
 def string_to_decimal(angle_string):
     angle_array = angle_string.split()
@@ -118,9 +133,9 @@ for path,subdirs,files in os.walk("."):
             files_array.append("/".join([path,ifile]))
 
 # set up the min and max bounding box
-min_x = 5 * math.pi
+min_x =  5 * math.pi
 max_x = -5 * math.pi
-min_y = 5 * math.pi
+min_y =  5 * math.pi
 max_y = -5 * math.pi
 
 # read in the zip database
@@ -159,5 +174,7 @@ for j in xrange(len(zip_code_database)):
 for ifile in files_array:
     print "Processing:",ifile," ..."
     geotag_file(ifile,zip_code_dict)
+    google_geotag_file(ifile)
 
 dev_null.close()
+print "Done with", len(files_array), "files."
