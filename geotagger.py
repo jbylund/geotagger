@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import os, argparse, math, sys, subprocess, operator
 from pygeocoder import Geocoder
+from geopy import geocoders
 
 class planet:
     def __init__(self,radius):
@@ -78,27 +79,60 @@ def init_image_extensions(valid_image_extensions):
     valid_image_extensions.add("srw")
 
 def geotag_file(ifile,location_database):
+    print "\nLocal:"
     file_phi_psi = get_lat_long_file(ifile)
     file_location = geotag(file_phi_psi,location_database)
     if(file_location != None):
         subprocess.call(["exiftool","-q", "-q", ifile, "-City=\"" + file_location.city+"\"","-State=\"" + file_location.state + "\""],stderr=dev_null)
+        print file_location.city, file_location.state
 
 def google_geotag_file(ifile):
+    print "\nGoogle:"
     file_phi_psi = get_lat_long_file(ifile)
     location = Geocoder.reverse_geocode(math.degrees(file_phi_psi.latitude()), math.degrees(file_phi_psi.longitude()))
+    admin = "administrative_area_level_"
+    location_attributes = list()
+    location_attributes.append(["country",           "Country          ","-country"])
+    location_attributes.append([admin + "1",         "State            ","-state"])
+    location_attributes.append(["locality",          "City             ","-city"])
+    location_attributes.append(["postal_code",       "Zip Code         ", ""])
+    location_attributes.append(["neighborhood",      "Neighborhood     ", ""]) # UWS
+    location_attributes.append(["political",         "City?            ", ""]) # great falls/uws
+    location_attributes.append([admin + "2",         "County           ", ""]) # county
+    location_attributes.append([admin + "3",         "District         ", ""]) # district?
+    location_attributes.append(["sublocality",       "Sublocality      ", ""]) # manhattan
+    location_attributes.append(["airport",           "Airport          ", ""])
+    location_attributes.append(["park",              "Park             ", ""])
+    location_attributes.append(["natural_feature",   "Natural Feature  ", ""])
+    location_attributes.append(["point_of_interest", "Point of Interest", ""])
+    location_attributes.append(["street_address",    "Street Address   ", ""])
+    location_attributes.append(["route",             "Road             ", ""])
+    location_attributes.append(["intersection",      "Intersection     ", ""])
+    location_attributes.append(["colloquial_area",   "Colloquial Area  ", ""])
+    location_attributes.append(["premise",           "Premise          ", ""])
+    location_attributes.append(["subpremise",        "Subpremise       ", ""])
 
-    location_attributes = ["street_address","route","intersection","political","country",
-            "administrative_area_level_1","administrative_area_level_2","administrative_area_level_3",
-            "colloquial_area","locality","sublocality","neighborhood","premise","subpremise",
-            "postal_code","natural_feature","airport","park","point_of_interest"]
-
-    for i in location_attributes:
-        this_attr = getattr(location[0], i)
+    for i in location_attributes[:5]:
+        this_attr = getattr(location[0], i[0])
         if(this_attr != None):
-            print this_attr
+            print i[1], "\t", this_attr
+
+#def bing_geotag_file(ifile):
+#    print "Bing:"
+#    bing_key = "Ai5qbTjrRTs6kw706-PQ7O4K-B5JxKc1JC9mfZ2MpVuLHNBAdhJqES7YjY9xx2VS "
+#    y = geocoders.Bing(bing_key)
+#    place, (lat, lng) = y.reverse("41.48157, -71.31447")
+#    print "%s: %.5f, %.5f" % (place, lat, lng)
+
+#def yahoo_geotag_file(ifile):
+#    print "Yahoo!:"
+#    yahoo_app_id = "Vj.0SDPV34GmoRRCqZniqcNbG6LyBScj2H_YgeXRj7EECYBl40QqbgZDDlLY"
+#    y = geocoders.Yahoo(yahoo_app_id)
+#    place, (lat, lng) = y.geocode("Thames Street, Newport, RI")
+#    print "%s: %.5f, %.5f" % (place, lat, lng)
 
 def get_lat_long_file(ifile):
-    gps_array = subprocess.check_output(["exiftool", ifile, "-GPSPosition"],stderr=dev_null).rstrip().split(":")
+    gps_array = subprocess.check_output(["exiftool", "-q", "-q", ifile, "-GPSPosition"],stderr=dev_null).rstrip().split(":")
     if(1 == len(gps_array)):
         return None
     longitude = string_to_decimal(gps_array[1].split(",")[0])
@@ -111,6 +145,10 @@ def string_to_decimal(angle_string):
     if("S" == angle_array[-1] or "W" == angle_array[-1]):
         return -1*ans
     return ans
+
+####################################################################################################################################
+##############  Main   #############################################################################################################
+####################################################################################################################################
 
 dev_null = open('/dev/null', 'w')
 earth = planet(6368)
@@ -171,10 +209,14 @@ for j in xrange(len(zip_code_database)):
     y = min(int(round(y_frac * divisions)),divisions - 1)
     zip_code_dict[x][y].append(i)
 
+
+# process the files
 for ifile in files_array:
     print "Processing:",ifile," ..."
     geotag_file(ifile,zip_code_dict)
     google_geotag_file(ifile)
+    print "\n"
 
+# clean up
 dev_null.close()
 print "Done with", len(files_array), "files."
