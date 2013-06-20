@@ -92,11 +92,11 @@ def google_geotag_file(ifile):
     location = Geocoder.reverse_geocode(math.degrees(file_phi_psi.latitude()), math.degrees(file_phi_psi.longitude()))
     admin = "administrative_area_level_"
     location_attributes = list()
-    location_attributes.append(["country",           "Country          ","-country"])
-    location_attributes.append([admin + "1",         "State            ","-state"])
-    location_attributes.append(["locality",          "City             ","-city"])
-    location_attributes.append(["postal_code",       "Zip Code         ", ""])
-    location_attributes.append(["neighborhood",      "Neighborhood     ", ""]) # UWS
+    location_attributes.append(["country",           "Country          ","-country="])
+    location_attributes.append([admin + "1",         "State            ","-state="])
+    location_attributes.append(["locality",          "City             ","-city="])
+    location_attributes.append(["postal_code",       "Zip Code         ", "-Keywords+="])
+    location_attributes.append(["neighborhood",      "Neighborhood     ", "-Keywords+="]) # UWS
     location_attributes.append(["political",         "City?            ", ""]) # great falls/uws
     location_attributes.append([admin + "2",         "County           ", ""]) # county
     location_attributes.append([admin + "3",         "District         ", ""]) # district?
@@ -116,20 +116,6 @@ def google_geotag_file(ifile):
         this_attr = getattr(location[0], i[0])
         if(this_attr != None):
             print i[1], "\t", this_attr
-
-#def bing_geotag_file(ifile):
-#    print "Bing:"
-#    bing_key = "Ai5qbTjrRTs6kw706-PQ7O4K-B5JxKc1JC9mfZ2MpVuLHNBAdhJqES7YjY9xx2VS "
-#    y = geocoders.Bing(bing_key)
-#    place, (lat, lng) = y.reverse("41.48157, -71.31447")
-#    print "%s: %.5f, %.5f" % (place, lat, lng)
-
-#def yahoo_geotag_file(ifile):
-#    print "Yahoo!:"
-#    yahoo_app_id = "Vj.0SDPV34GmoRRCqZniqcNbG6LyBScj2H_YgeXRj7EECYBl40QqbgZDDlLY"
-#    y = geocoders.Yahoo(yahoo_app_id)
-#    place, (lat, lng) = y.geocode("Thames Street, Newport, RI")
-#    print "%s: %.5f, %.5f" % (place, lat, lng)
 
 def get_lat_long_file(ifile):
     gps_array = subprocess.check_output(["exiftool", "-q", "-q", ifile, "-GPSPosition"],stderr=dev_null).rstrip().split(":")
