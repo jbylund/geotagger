@@ -20,7 +20,7 @@ class row:
         self.dst      = row_contents[5]
 
     def __repr__(self):
-        return self.city + ", " + self.state + " " + str(self.position)
+        return f"{self.city}, {self.state} {str(self.position)}"
 
 class phi_psi:
     def __init__(self,phi,psi):
@@ -40,15 +40,11 @@ def great_circle_distance(p1,p2):
     dlong = p2.latitude() - p1.latitude()
     dlat = p2.longitude() - p1.longitude()
     a = (math.sin(dlat / 2.0))**2 + math.cos(p1.longitude()) * math.cos(p2.longitude()) * (math.sin(dlong / 2.0))**2
-    if(a < 1):
-        c = 2 * math.asin(math.sqrt(a))
-    else:
-        c = 2 * math.asin(1)        
-    dist = earth.radius * c
-    return dist
+    c = 2 * math.asin(math.sqrt(a)) if (a < 1) else 2 * math.asin(1)
+    return earth.radius * c
 
 def geotag(p1,location_database):
-    if(None == p1):
+    if p1 is None:
         return None
     x_frac = (p1.phi - min_x) / (max_x - min_x)
     y_frac = (p1.psi - min_y) / (max_y - min_y)
@@ -119,7 +115,7 @@ def google_geotag_file(ifile):
 
 def get_lat_long_file(ifile):
     gps_array = subprocess.check_output(["exiftool", "-q", "-q", ifile, "-GPSPosition"],stderr=dev_null).rstrip().split(":")
-    if(1 == len(gps_array)):
+    if len(gps_array) == 1:
         return None
     longitude = string_to_decimal(gps_array[1].split(",")[0])
     latitude = string_to_decimal(gps_array[1].split(",")[1])
@@ -128,81 +124,85 @@ def get_lat_long_file(ifile):
 def string_to_decimal(angle_string):
     angle_array = angle_string.split()
     ans = int(angle_array[0]) + int(angle_array[2].rstrip("'"))/60.0 + float(angle_array[3].rstrip('"'))/3600.0
-    if("S" == angle_array[-1] or "W" == angle_array[-1]):
-        return -1*ans
-    return ans
+    return -1*ans if angle_array[-1] in ["S", "W"] else ans
 
 ####################################################################################################################################
 ##############  Main   #############################################################################################################
 ####################################################################################################################################
 
+with open('/dev/null', 'w') as dev_null:
+    earth = planet(6368)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--recurse', action='store_true', help='Recurse into subdirectories')
+    args = parser.parse_args()
+
+    # set up valid image extensions
+    valid_image_extensions = set()
+    init_image_extensions(valid_image_extensions)
+
+    # set up the list of files
+    files_array = []
+    for path,subdirs,files in os.walk("."):
+        if(path != "." and not args.recurse):
+            break
+        for ifile in files:
+            extension = ifile.lower().split(".")[-1]
+            if(extension in valid_image_extensions):
+                files_array.append("/".join([path,ifile]))
+
+    # set up the min and max bounding box
+    min_x =  5 * math.pi
+    max_x = -5 * math.pi
+    min_y =  5 * math.pi
+    max_y = -5 * math.pi
+
+    # read in the zip database
+    zip_code_database = []
+    with open("zip_database.csv", 'r') as zip_code_file:
+        for rowstring in zip_code_file:
+            rowstring = rowstring.rstrip()
+            if len(rowstring) == 0:
+                continue
+            if rowstring[0] == "#":
+                continue
+            zip_code_database.append(row(rowstring))
+            min_x = min(min_x,zip_code_database[-1].position.phi)
+            max_x = max(max_x,zip_code_database[-1].position.phi)
+            min_y = min(min_y,zip_code_database[-1].position.psi)
+            max_y = max(max_y,zip_code_database[-1].position.psi)
+    # make a cell table
+    zip_code_dict = []
+    divisions = 50
+    for i in xrange(divisions):
+        zip_code_dict.append([])
+        for _ in xrange(divisions):
+            zip_code_dict[i].append([])
+
+    # put the zip database into "cells"
+    for j in xrange(len(zip_code_database)):
+        i = zip_code_database[j]
+        x_frac = (i.position.phi - min_x) / (max_x - min_x)
+        y_frac = (i.position.psi - min_y) / (max_y - min_y)
+        x = min(int(round(x_frac * divisions)),divisions - 1)
+        y = min(int(round(y_frac * divisions)),divisions - 1)
+        zip_code_dict[x][y].append(i)
+
+
+    for j in xrange(len(zip_code_database)):
+        i = zip_code_database[j]
+        x_frac = (i.position.phi - min_x) / (max_x - min_x)
+        y_frac = (i.position.psi - min_y) / (max_y - min_y)
+        x = min(int(round(x_frac * divisions)),divisions - 1)
+        y = min(int(round(y_frac * divisions)),divisions - 1)
+        zip_code_dict[x][y].append(i)
+
+
+    # process the files
+    for ifile in files_array:
+        print "Processing:",ifile," ..."
+        geotag_file(ifile,zip_code_dict)
+        google_geotag_file(ifile)
+        print "\n"
+
 dev_null = open('/dev/null', 'w')
-earth = planet(6368)
-parser = argparse.ArgumentParser()
-parser.add_argument('--recurse', action='store_true', help='Recurse into subdirectories')
-args = parser.parse_args()
-
-# set up valid image extensions
-valid_image_extensions = set()
-init_image_extensions(valid_image_extensions)
-
-# set up the list of files
-files_array = list()
-for path,subdirs,files in os.walk("."):
-    if(path != "." and not args.recurse):
-        break
-    for ifile in files:
-        extension = ifile.lower().split(".")[-1]
-        if(extension in valid_image_extensions):
-            files_array.append("/".join([path,ifile]))
-
-# set up the min and max bounding box
-min_x =  5 * math.pi
-max_x = -5 * math.pi
-min_y =  5 * math.pi
-max_y = -5 * math.pi
-
-# read in the zip database
-zip_code_database = list()
-zip_code_file = open("zip_database.csv", 'r')
-for rowstring in zip_code_file:
-    rowstring = rowstring.rstrip()
-    if(0 == len(rowstring)):
-        continue
-    if("#" == rowstring[0]):
-        continue
-    zip_code_database.append(row(rowstring))
-    min_x = min(min_x,zip_code_database[-1].position.phi)
-    max_x = max(max_x,zip_code_database[-1].position.phi)
-    min_y = min(min_y,zip_code_database[-1].position.psi)
-    max_y = max(max_y,zip_code_database[-1].position.psi)
-zip_code_file.close()
-
-# make a cell table
-zip_code_dict = list()
-divisions = 50
-for i in xrange(divisions):
-    zip_code_dict.append(list())
-    for j in xrange(divisions):
-        zip_code_dict[i].append(list())
-
-# put the zip database into "cells"
-for j in xrange(len(zip_code_database)):
-    i = zip_code_database[j]
-    x_frac = (i.position.phi - min_x) / (max_x - min_x)
-    y_frac = (i.position.psi - min_y) / (max_y - min_y)
-    x = min(int(round(x_frac * divisions)),divisions - 1)
-    y = min(int(round(y_frac * divisions)),divisions - 1)
-    zip_code_dict[x][y].append(i)
-
-
-# process the files
-for ifile in files_array:
-    print "Processing:",ifile," ..."
-    geotag_file(ifile,zip_code_dict)
-    google_geotag_file(ifile)
-    print "\n"
-
-# clean up
-dev_null.close()
 print "Done with", len(files_array), "files."
